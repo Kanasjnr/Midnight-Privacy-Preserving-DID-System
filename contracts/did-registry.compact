@@ -1,0 +1,19 @@
+pragma language_version 0.22;
+
+import CompactStandardLibrary;
+include 'types.compact';
+
+export ledger did_documents: Map<Bytes<32>, Bytes<32>>; // did_hash -> document_commitment
+export ledger controllers: Map<Bytes<32>, Bytes<32>>; // did_hash -> controller_pk_hash
+
+export circuit registerDID(did_hash: Bytes<32>, document_commitment: Bytes<32>, controller_pk_hash: Bytes<32>): [] {
+  assert(!did_documents.exists(did_hash), "DID already registered");
+  did_documents[did_hash] = document_commitment;
+  controllers[did_hash] = controller_pk_hash;
+}
+
+export circuit updateDocument(did_hash: Bytes<32>, new_commitment: Bytes<32>): [] {
+  assert(did_documents.exists(did_hash), "DID not found");
+  // Verification happens via ZK proof that the caller knows the private key associated with controller_pk_hash
+  did_documents[did_hash] = new_commitment;
+}

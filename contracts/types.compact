@@ -1,0 +1,24 @@
+pragma language_version 0.22;
+
+import CompactStandardLibrary;
+
+export enum CredentialStatus {
+  ACTIVE,
+  REVOKED,
+  SUSPENDED
+}
+
+export struct SchemaMetadata {
+  name: Bytes<32>,
+  version: Uint<8>,
+  creator: Bytes<32>,
+  json_schema_hash: Bytes<32>
+}
+
+export struct IssuedCredential {
+  id: Field,
+  holder_did_commitment: Bytes<32>,
+  schema_id: Bytes<32>,
+  credential_hash: Bytes<32>, // Merkle root of attributes
+  status: CredentialStatus
+}

@@ -1,0 +1,32 @@
+pragma language_version 0.22;
+
+import CompactStandardLibrary;
+include 'types.compact';
+
+// Selective disclosure proof verifier
+// Proves "Age >= threshold" using private witnesses
+
+witness dateOfBirth(): Bytes<32>; 
+witness salt(): Bytes<32>;        
+
+export circuit verifyAge(
+  threshold: Uint<8>,
+  expected_commitment: Bytes<32>
+): [] {
+  const dob = dateOfBirth();
+  const s = salt();
+
+  // Verify commitment: hash(dob, salt) == expected_commitment
+  const computed_commitment = persistentHash<Vector<2, Bytes<32>>>([dob, s]);
+  assert(computed_commitment == expected_commitment, "Invalid credential commitment");
+
+  // Proof logic for age threshold
+  const current_year = 2026;
+  const birth_year = extractYear(dob);
+  assert(current_year - birth_year >= threshold as Uint<32>, "Underage");
+}
+
+circuit extractYear(dob: Bytes<32>): Uint<32> {
+  // Placeholder for byte-to-year extraction logic
+  return 2000; 
+}

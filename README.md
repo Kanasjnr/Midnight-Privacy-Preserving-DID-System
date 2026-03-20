@@ -1,0 +1,99 @@
+# midnight-did-system
+
+A Midnight Network application created with `create-midnight-app`.
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+ installed
+- Docker installed (for proof server)
+
+### Quick Start
+
+1. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+
+2. **Setup and deploy**:
+
+   ```bash
+   npm run setup
+   ```
+
+   This will:
+
+   - Compile your Compact contract
+   - Build TypeScript to JavaScript
+   - Deploy contract to the testnet
+
+3. **Interact with your contract**:
+   ```bash
+   npm run cli
+   ```
+
+### Available Scripts
+
+- `npm run setup` - Compile, build, and deploy contract
+- `npm run compile` - Compile Compact contract
+- `npm run build` - Build TypeScript
+- `npm run deploy` - Deploy contract to testnet
+- `npm run cli` - Interactive CLI for contract
+- `npm run check-balance` - Check wallet balance
+- `npm run reset` - Reset all compiled/built files
+- `npm run clean` - Clean build artifacts
+
+### Environment Variables
+
+Copy `.env.example` to `.env` and configure:
+
+- `WALLET_SEED` - Your 64-character wallet seed (auto-generated)
+- `MIDNIGHT_NETWORK` - Network to use (testnet)
+- `PROOF_SERVER_URL` - Proof server URL
+- `CONTRACT_NAME` - Contract name
+
+### Project Structure
+
+```
+midnight-did-system/
+├── contracts/
+│   ├── hello-world.compact    # Smart contract source
+│   └── managed/               # Compiled artifacts
+├── src/
+│   ├── deploy.ts             # Deployment script
+│   ├── cli.ts                # Interactive CLI
+│   ├── providers/            # Shared providers
+│   └── utils/                # Utility functions
+├── .env                      # Environment config (keep private!)
+├── deployment.json           # Deployment info
+└── package.json
+```
+
+### Getting Testnet Tokens
+
+1. Run `npm run deploy` to see your wallet address
+2. Visit [https://midnight.network/test-faucet](https://midnight.network/test-faucet)
+3. Enter your address to receive test tokens
+
+### Learn More
+
+- [Midnight Documentation](https://docs.midnight.network)
+- [Compact Language Guide](https://docs.midnight.network/compact)
+- [Tutorial Series](https://docs.midnight.network/tutorials)
+
+## Contract Overview
+
+This project includes a simple "Hello World" contract that:
+
+- Stores a message on the blockchain
+- Allows reading the current message
+- Demonstrates basic Midnight functionality
+
+The contract uses:
+
+- **Public ledger state** for the message
+- **Zero-knowledge proofs** for transactions
+- **Privacy-preserving** architecture
+
+Happy coding! 🌙
