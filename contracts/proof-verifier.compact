@@ -1,32 +1,31 @@
-pragma language_version 0.22;
+pragma language_version >= 0.20 && <= 0.21;
 
-import CompactStandardLibrary;
-include 'types.compact';
+include 'types';
 
-// Selective disclosure proof verifier
-// Proves "Age >= threshold" using private witnesses
+export ledger dummy: Field;
 
-witness dateOfBirth(): Bytes<32>; 
-witness salt(): Bytes<32>;        
+witness dateOfBirth(): Uint<32>; // YYYYMMDD format
+witness salt(): Bytes<32>;
 
 export circuit verifyAge(
-  threshold: Uint<8>,
+  current_date: Uint<32>, // YYYYMMDD
+  threshold_years: Uint<32>,
   expected_commitment: Bytes<32>
 ): [] {
+  const _force_zk = dummy; // Read ledger to force ZK artifact generation
   const dob = dateOfBirth();
   const s = salt();
 
-  // Verify commitment: hash(dob, salt) == expected_commitment
-  const computed_commitment = persistentHash<Vector<2, Bytes<32>>>([dob, s]);
+  // 1. Verify commitment: hash(dob as Field, salt)
+  const computed_commitment = persistentHash<Vector<2, Bytes<32>>>([
+    (dob as Field) as Bytes<32>, 
+    s
+  ]);
   assert(computed_commitment == expected_commitment, "Invalid credential commitment");
 
-  // Proof logic for age threshold
-  const current_year = 2026;
-  const birth_year = extractYear(dob);
-  assert(current_year - birth_year >= threshold as Uint<32>, "Underage");
+  // 2. Verified age check: current_date - dob >= (threshold_years * 10000)
+  assert(current_date - dob >= (threshold_years * 10000 as Uint<32>), "Underage");
 }
 
-circuit extractYear(dob: Bytes<32>): Uint<32> {
-  // Placeholder for byte-to-year extraction logic
-  return 2000; 
-}
+
+
