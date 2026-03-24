@@ -70,7 +70,7 @@ async function main() {
       unshielded: (config) =>
         UnshieldedWallet({
           ...config,
-          txHistoryStorage: new InMemoryTransactionHistoryStorage(),
+          txHistoryStorage: config.txHistoryStorage,
         }).startWithPublicKey(publicKeyObj),
       dust: (config) => DustWallet(config).startWithSecretKey(dustSecretKey, ledgerParams.dust),
     });
@@ -78,15 +78,16 @@ async function main() {
   await wallet.start(shieldedSecretKeys, dustSecretKey);
 
   const state = await Rx.firstValueFrom(wallet.state()) as any;
+  const formatAddress = (addr: any) => typeof addr === 'string' ? addr : (addr?.address ?? addr?.toString() ?? 'Unknown');
 
   console.log();
   console.log(chalk.cyan.bold("📍 Wallet Address Information:"));
-  console.log(chalk.white(`   🛡️  Shielded:    ${state.shielded.address}`));
-  console.log(chalk.white(`   🔓  Unshielded:  ${state.unshielded.address}`));
-  console.log(chalk.white(`   🧹  DUST:        ${state.dust.address}`));
+  console.log(chalk.white(`   🛡️  Shielded:    ${formatAddress(state.shielded.address)}`));
+  console.log(chalk.white(`   🔓  Unshielded:  ${formatAddress(state.unshielded.address)}`));
+  console.log(chalk.white(`   🧹  DUST:        ${formatAddress(state.dust.address)}`));
   
   console.log(chalk.green.bold(`\n🚀 Faucet-Ready Address:`));
-  console.log(chalk.green(`   ${state.unshielded.address}`));
+  console.log(chalk.green(`   ${formatAddress(state.unshielded.address)}`));
   console.log(chalk.gray(`   (Use this address on the Midnight Preview Faucet)`));
 
   await wallet.stop();
