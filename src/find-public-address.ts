@@ -78,7 +78,12 @@ async function main() {
   await wallet.start(shieldedSecretKeys, dustSecretKey);
 
   const state = await Rx.firstValueFrom(wallet.state()) as any;
-  const formatAddress = (addr: any) => typeof addr === 'string' ? addr : (addr?.address ?? addr?.toString() ?? 'Unknown');
+  const formatAddress = (addr: any) => {
+    if (typeof addr === 'string') return addr;
+    if (addr?.address && typeof addr.address === 'string') return addr.address;
+    if (typeof addr?.toString === 'function' && addr.toString() !== '[object Object]') return addr.toString();
+    return JSON.stringify(addr);
+  };
 
   console.log();
   console.log(chalk.cyan.bold("📍 Wallet Address Information:"));
