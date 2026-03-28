@@ -5,7 +5,6 @@ import {
   UnshieldedWallet,
   createKeystore,
   PublicKey,
-  InMemoryTransactionHistoryStorage,
 } from "@midnight-ntwrk/wallet-sdk-unshielded-wallet";
 import { DustWallet } from "@midnight-ntwrk/wallet-sdk-dust-wallet";
 import { ShieldedWallet } from "@midnight-ntwrk/wallet-sdk-shielded";
@@ -18,10 +17,10 @@ import {
 import { setNetworkId, getNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
 import { WebSocket } from "ws";
 import chalk from "chalk";
-import Enquirer from "enquirer";
 import { Buffer } from "buffer";
 import { EnvironmentManager } from "./utils/environment.js";
 import { DIDManager } from "./dids/did-manager.js";
+import { getPersistentStorage } from "./utils/storage.js";
 
 // --- COMPREHENSIVE ITERATOR POLYFILLS ---
 const polyfillIterator = (proto: any) => {
@@ -56,21 +55,32 @@ if (!(Array.prototype as any).toArray) {
 globalThis.WebSocket = WebSocket;
 
 async function fetchLedgerParameters(indexerUrl: string): Promise<LedgerParameters> {
-  const response = await fetch(indexerUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      query: `query { block { ledgerParameters } }`
-    }),
-  });
-  const result = (await response.json()) as any;
-  const hex = result.data.block.ledgerParameters;
-  return LedgerParameters.deserialize(Buffer.from(hex, "hex"));
+  const maxRetries = 3;
+  let lastError: any;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetch(indexerUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: `query { block { ledgerParameters } }`
+        }),
+      });
+      const result = (await response.json()) as any;
+      const hex = result.data.block.ledgerParameters;
+      return LedgerParameters.deserialize(Buffer.from(hex, "hex"));
+    } catch (error) {
+      lastError = error;
+      console.log(chalk.yellow(`\n⚠️ Fetch failed (attempt ${i + 1}/${maxRetries}). Retrying in 2s...`));
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  }
+  throw lastError;
 }
 
 async function main() {
   console.log(chalk.blue.bold("\n━".repeat(60)));
-  console.log(chalk.blue.bold("🌙  Midnight Privacy-Preserving DID System"));
+  console.log(chalk.blue.bold("🌙  Midnight DID System Verification"));
   console.log(chalk.blue.bold("━".repeat(60) + "\n"));
 
   try {
@@ -80,8 +90,6 @@ async function main() {
     setNetworkId(networkId);
     
     const walletSeed = process.env.WALLET_SEED!;
-    console.log(chalk.cyan("🏗️  Initializing Wallet..."));
-    
     const hdWallet = HDWallet.fromSeed(Buffer.from(walletSeed, "hex"));
     if (hdWallet.type !== "seedOk") throw new Error("Invalid seed");
     const keys = hdWallet.hdWallet
@@ -95,8 +103,9 @@ async function main() {
     const dustSecretKey = DustSecretKey.fromSeed(keys.keys[Roles.Dust]);
     const shieldedSecretKeys = ZswapSecretKeys.fromSeed(keys.keys[Roles.Zswap]);
 
-    console.log(chalk.cyan("📡 Fetching LedgerParameters from indexer..."));
     const ledgerParams = await fetchLedgerParameters(networkConfig.indexer);
+
+    const storage = getPersistentStorage("verify");
 
     const wallet = await WalletFacade.init({
       configuration: {
@@ -107,20 +116,19 @@ async function main() {
         },
         relayURL: new URL(networkConfig.node.replace(/^http/, "ws")),
         provingServerUrl: new URL(networkConfig.proofServer),
-        txHistoryStorage: new InMemoryTransactionHistoryStorage(),
+        txHistoryStorage: storage,
         costParameters: { additionalFeeOverhead: 300_000_000_000_000n, feeBlocksMargin: 5 },
       },
       shielded: (config) => ShieldedWallet(config).startWithSecretKeys(shieldedSecretKeys),
-      unshielded: (config) => UnshieldedWallet({ ...config, txHistoryStorage: new InMemoryTransactionHistoryStorage() }).startWithPublicKey(publicKeyObj),
+      unshielded: (config) => UnshieldedWallet({ ...config, txHistoryStorage: storage }).startWithPublicKey(publicKeyObj),
       dust: (config) => DustWallet(config).startWithSecretKey(dustSecretKey, ledgerParams.dust),
     });
 
-    console.log(chalk.cyan("🔄 Synchronizing with Midnight Network..."));
+    console.log(chalk.cyan("🔄 Synchronizing wallet..."));
     await wallet.start(shieldedSecretKeys, dustSecretKey);
 
     const state = await Rx.firstValueFrom(
       wallet.state().pipe(
-        Rx.throttleTime(1000),
         Rx.tap((s: any) => {
           process.stdout.write(`\r🔄 Synchronizing wallet... [${s.isSynced ? 'DONE' : 'Loading'}]   `);
         }),
@@ -129,59 +137,32 @@ async function main() {
       )
     ) as FacadeState;
     console.log(chalk.green("\n✅ Wallet Synced!"));
-    console.log(chalk.white(`   Address: ${state.shielded.address}\n`));
 
     const didManager = new DIDManager(wallet, networkConfig, state.shielded.encryptionPublicKey as any, shieldedSecretKeys, dustSecretKey, unshieldedKeystore, walletSeed);
 
-    while (true) {
-      const response = await Enquirer.prompt({
-        type: "select",
-        name: "action",
-        message: "Select an action:",
-        choices: [
-          "Register DID",
-          "Update DID Document",
-          "Issue Credential (DOB)",
-          "Verify Age (Zero-Knowledge Proof)",
-          "Exit",
-        ],
-      }) as any;
+    const testDID = `test-${Date.now().toString().slice(-6)}.id`;
+    
+    // 1. Register DID
+    console.log(chalk.yellow(`\n📝 Step 1: Registering DID '${testDID}'...`));
+    await didManager.registerDID(testDID);
 
-      try {
-        if (response.action === "Register DID") {
-          const { name } = await Enquirer.prompt({ type: "input", name: "name", message: "Enter DID name (e.g., alice.id):" }) as any;
-          await didManager.registerDID(name);
-        } else if (response.action === "Update DID Document") {
-          const { name, doc } = await Enquirer.prompt([
-            { type: "input", name: "name", message: "Enter DID name:" },
-            { type: "input", name: "doc", message: "Enter new Document Content:" },
-          ]) as any;
-          await didManager.updateDID(name, doc);
-        } else if (response.action === "Issue Credential (DOB)") {
-          const { name, dob } = await Enquirer.prompt([
-            { type: "input", name: "name", message: "Enter Holder DID name:" },
-            { type: "input", name: "dob", message: "Enter Year of Birth (YYYYMMDD):", validate: (v: string) => /^\d{8}$/.test(v) },
-          ]) as any;
-          await didManager.issueCredential(name, parseInt(dob));
-        } else if (response.action === "Verify Age (Zero-Knowledge Proof)") {
-          const { id, dob, threshold } = await Enquirer.prompt([
-            { type: "input", name: "id", message: "Enter DID name (e.g., alice.id):" },
-            { type: "input", name: "dob", message: "Enter your Year of Birth (YYYYMMDD):", validate: (v: string) => /^\d{8}$/.test(v) },
-            { type: "input", name: "threshold", message: "Enter Age Threshold (in years, e.g., 18):", validate: (v: string) => /^\d+$/.test(v) },
-          ]) as any;
-          await didManager.verifyAge(id, parseInt(dob), parseInt(threshold));
-        } else if (response.action === "Exit") {
-          break;
-        }
-      } catch (err: any) {
-        console.error(chalk.red(`\n❌ Action Failed: ${err.message}\n`));
-      }
-    }
+    // 2. Update DID Document
+    console.log(chalk.yellow(`\n📝 Step 2: Updating DID Document for '${testDID}'...`));
+    await didManager.updateDID(testDID, "v=did:midnight:test-document-v1");
+
+    // 3. Issue Credential
+    console.log(chalk.yellow(`\n📝 Step 3: Issuing Credential (DOB: 19950101) for '${testDID}'...`));
+    await didManager.issueCredential(testDID, 19950101);
+
+    // 4. Verify Age
+    console.log(chalk.yellow(`\n📝 Step 4: Verifying Age (Threshold: 18+)...`));
+    await didManager.verifyAge(testDID, 19950101, 18);
+
+    console.log(chalk.green.bold("\n✨ ALL VERIFICATION STEPS PASSED SUCCESSFULLY! ✨"));
 
     await wallet.stop();
-    process.exit(0);
   } catch (error: any) {
-    console.error(chalk.red("\n❌ Fatal Error:"));
+    console.error(chalk.red("\n❌ Verification Failed:"));
     console.error(chalk.red(error.stack || error.message));
     process.exit(1);
   }
