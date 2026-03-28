@@ -1,6 +1,11 @@
-pragma language_version 0.21;
+pragma language_version >= 0.20 && <= 0.21;
 
 import CompactStandardLibrary;
+
+export struct DIDEntry {
+  document_commitment: Bytes<32>,
+  controller_pk: Bytes<32>
+}
 
 export enum CredentialStatus {
   ACTIVE,
@@ -11,16 +16,14 @@ export enum CredentialStatus {
 export struct SchemaMetadata {
   name: Bytes<32>,
   version: Uint<8>,
-  creator: Bytes<32>,
-  json_schema_hash: Bytes<32>,
-  is_set: Boolean
+  creator_pk: Bytes<32>,
+  json_schema_hash: Bytes<32>
 }
 
-export struct IssuedCredential {
-  id: Field,
-  holder_did_commitment: Bytes<32>,
+export struct IssuanceEntry {
+  holder_did_hash: Bytes<32>,
   schema_id: Bytes<32>,
-  credential_hash: Bytes<32>, // Merkle root of attributes
-  status: CredentialStatus,
-  is_set: Boolean
+  credential_commitment: Bytes<32>,
+  issuer_pk: Bytes<32>,
+  status: CredentialStatus
 }

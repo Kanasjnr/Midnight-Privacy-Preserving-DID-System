@@ -9,94 +9,111 @@ import {
 import { DustWallet } from "@midnight-ntwrk/wallet-sdk-dust-wallet";
 import { ShieldedWallet } from "@midnight-ntwrk/wallet-sdk-shielded";
 import { WalletFacade, FacadeState } from "@midnight-ntwrk/wallet-sdk-facade";
-import { nativeToken, ZswapSecretKeys, DustSecretKey, LedgerParameters } from "@midnight-ntwrk/ledger-v8";
+import {
+  ZswapSecretKeys,
+  DustSecretKey,
+  LedgerParameters,
+  nativeToken
+} from "@midnight-ntwrk/ledger-v8";
 import { setNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
-import { EnvironmentManager } from "./utils/environment.js";
+import { WebSocket } from "ws";
 import * as Rx from "rxjs";
 import chalk from "chalk";
+import { EnvironmentManager } from "./utils/environment.js";
 
-setNetworkId('preview');
+// --- POLYFILL START ---
+if (!Object.getPrototypeOf(new Map().values()).map) {
+  Object.defineProperty(Object.getPrototypeOf(new Map().values()), 'map', {
+    value: function (fn: any) {
+      return Array.from(this).map(fn);
+    },
+    configurable: true,
+    enumerable: false,
+    writable: true
+  });
+}
+// --- POLYFILL END ---
+
+// @ts-ignore
+globalThis.WebSocket = WebSocket;
+setNetworkId("preview");
+
+async function fetchLedgerParameters(indexerUrl: string): Promise<LedgerParameters> {
+  const response = await fetch(indexerUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: `query { block { ledgerParameters } }`
+    }),
+  });
+  const result = (await response.json()) as any;
+  const hex = result.data.block.ledgerParameters;
+  return LedgerParameters.deserialize(Buffer.from(hex, "hex"));
+}
 
 async function main() {
-  const walletSeed = process.env.WALLET_SEED!;
-  const networkConfig = EnvironmentManager.getNetworkConfig();
+  try {
+    const networkConfig = EnvironmentManager.getNetworkConfig();
+    const walletSeed = process.env.WALLET_SEED!;
+    const seed = Uint8Array.from(Buffer.from(walletSeed, "hex"));
 
-  console.log("Connecting to wallet to extract addresses...");
+    const hdWalletResult = HDWallet.fromSeed(seed);
+    if (hdWalletResult.type === "seedError") throw new Error(String((hdWalletResult as any).error));
+    const account = hdWalletResult.hdWallet.selectAccount(0);
 
-  const seedBytes = Uint8Array.from(Buffer.from(walletSeed, 'hex'));
-  const hdWalletResult = HDWallet.fromSeed(seedBytes);
-  if (hdWalletResult.type === 'seedError') throw new Error(`Seed Error: ${hdWalletResult.error}`);
-  const account = hdWalletResult.hdWallet.selectAccount(0);
+    // Setup Unshielded Wallet
+    const unshieldedKeyResult = account.selectRole(Roles.NightExternal).deriveKeyAt(0);
+    const keystore = createKeystore((unshieldedKeyResult as any).key, "preview");
+    const publicKeyObj = PublicKey.fromKeyStore(keystore);
 
-  // 1. Unshielded Wallet
-  const unshieldedKeyResult = account.selectRole(Roles.NightExternal).deriveKeyAt(0);
-  if (unshieldedKeyResult.type !== 'keyDerived') throw new Error("Failed to derive unshielded key");
-  const unshieldedSecretKey = unshieldedKeyResult.key;
-  const keystore = createKeystore(unshieldedSecretKey, 'preview');
-  const publicKeyObj = PublicKey.fromKeyStore(keystore);
-    // 2. Dust Wallet setup
+    // Setup Dust Wallet
     const dustKeyResult = account.selectRole(Roles.Dust).deriveKeyAt(0);
-    if (dustKeyResult.type !== 'keyDerived') throw new Error("Failed to derive dust key");
-    const dustSecretKey = DustSecretKey.fromSeed(dustKeyResult.key);
+    const dustSecretKey = DustSecretKey.fromSeed((dustKeyResult as any).key);
 
-    // 3. Shielded Wallet setup
+    // Setup Shielded Wallet
     const zswapKeyResult = account.selectRole(Roles.Zswap).deriveKeyAt(0);
-    if (zswapKeyResult.type !== 'keyDerived') throw new Error("Failed to derive shielded key");
-    const shieldedSecretKeys = ZswapSecretKeys.fromSeed(zswapKeyResult.key);
+    const shieldedSecretKeys = ZswapSecretKeys.fromSeed((zswapKeyResult as any).key);
 
-    const indexerConfig = {
-      indexerHttpUrl: networkConfig.indexer,
-      indexerWsUrl: networkConfig.indexerWS,
-    };
-    const ledgerParams = LedgerParameters.initialParameters();
-    const proofServerUrl = new URL(networkConfig.proofServer);
-    const nodeUrl = new URL(networkConfig.node);
-
-    const walletConfig = {
-      networkId: 'preview' as any,
-      indexerClientConnection: indexerConfig,
-      relayURL: nodeUrl,
-      provingServerUrl: proofServerUrl,
-      txHistoryStorage: new InMemoryTransactionHistoryStorage(),
-      costParameters: {
-        additionalFeeOverhead: 0n,
-        feeBlocksMargin: 5,
-      },
-    };
-
+    console.log(chalk.cyan("📡 Fetching LedgerParameters from indexer..."));
+    const ledgerParams = await fetchLedgerParameters(networkConfig.indexer);
+    
     const wallet = await WalletFacade.init({
-      configuration: walletConfig,
+      configuration: {
+        networkId: "preview" as any,
+        indexerClientConnection: { indexerHttpUrl: networkConfig.indexer, indexerWsUrl: networkConfig.indexerWS },
+        relayURL: new URL(networkConfig.node),
+        provingServerUrl: new URL(networkConfig.proofServer),
+        txHistoryStorage: new InMemoryTransactionHistoryStorage(),
+        costParameters: {
+          additionalFeeOverhead: 0n,
+          feeBlocksMargin: 5,
+        },
+      },
       shielded: (config) => ShieldedWallet(config).startWithSecretKeys(shieldedSecretKeys),
-      unshielded: (config) =>
-        UnshieldedWallet({
-          ...config,
-          txHistoryStorage: config.txHistoryStorage,
-        }).startWithPublicKey(publicKeyObj),
+      unshielded: (config) => UnshieldedWallet({ ...config, txHistoryStorage: new InMemoryTransactionHistoryStorage() }).startWithPublicKey(publicKeyObj),
       dust: (config) => DustWallet(config).startWithSecretKey(dustSecretKey, ledgerParams.dust),
     });
 
-  await wallet.start(shieldedSecretKeys, dustSecretKey);
+    console.log(chalk.cyan("🔄 Initializing and synchronizing wallet..."));
+    await wallet.start(shieldedSecretKeys, dustSecretKey);
 
-  const state = await Rx.firstValueFrom(wallet.state()) as any;
-  const formatAddress = (addr: any) => {
-    if (typeof addr === 'string') return addr;
-    if (addr?.address && typeof addr.address === 'string') return addr.address;
-    if (typeof addr?.toString === 'function' && addr.toString() !== '[object Object]') return addr.toString();
-    return JSON.stringify(addr);
-  };
+    const state = await Rx.firstValueFrom(wallet.state().pipe(Rx.filter((s) => s.isSynced))) as FacadeState;
 
-  console.log();
-  console.log(chalk.cyan.bold("📍 Wallet Address Information:"));
-  console.log(chalk.white(`   🛡️  Shielded:    ${formatAddress(state.shielded.address)}`));
-  console.log(chalk.white(`   🔓  Unshielded:  ${formatAddress(state.unshielded.address)}`));
-  console.log(chalk.white(`   🧹  DUST:        ${formatAddress(state.dust.address)}`));
-  
-  console.log(chalk.green.bold(`\n🚀 Faucet-Ready Address:`));
-  console.log(chalk.green(`   ${formatAddress(state.unshielded.address)}`));
-  console.log(chalk.gray(`   (Use this address on the Midnight Preview Faucet)`));
+    console.log();
+    console.log(chalk.cyan.bold("📍 Wallet Addresses:"));
+    console.log(chalk.white(`   Unshielded:  ${state.unshielded.address}`));
+    console.log(chalk.white(`   Shielded:    ${state.shielded.address}`));
+    console.log(chalk.white(`   Dust:        ${state.dust.address}`));
+    
+    let balance = state.shielded.balances[nativeToken().tag] || 0n;
+    console.log(chalk.white(`   Balance:     ${balance} tNight`));
+    console.log();
 
-  await wallet.stop();
-  process.exit(0);
+    await wallet.stop();
+  } catch (error: any) {
+    console.error(chalk.red(error.stack || error.message));
+    process.exit(1);
+  }
 }
 
-main().catch(console.error);
+main();

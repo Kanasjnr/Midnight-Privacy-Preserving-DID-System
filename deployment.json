@@ -1,0 +1,9 @@
+{
+  "network": "Preprod",
+  "contracts": {
+    "did-registry": "38d919855c45c9b22db2cfae86f605b0cd3d22533ed41cc0e8668065685f09e5",
+    "schema-registry": "5f23a2e5dd5cb7e35e6abfea351289e14251ce1a7ea28e64ee47f53a99b37c7b",
+    "credential-issuer": "98bda62b37e06158476c0416956cbf77f7a8b5b6b7f6e4f293935d4ae46f90e9",
+    "proof-verifier": "7c1bfdb21a7a8fefd4a0dd100d33a77f108a3125a89d08b062afdbf2ac4ee38c"
+  }
+}

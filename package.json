@@ -14,24 +14,27 @@
     "deploy": "node dist/deploy.js",
     "cli": "node dist/cli.js",
     "check-balance": "npm run build && node dist/check-balance.js",
+    "view-tx": "npm run build && node dist/view-transaction.js",
     "reset": "rm -rf contracts/managed deployment.json dist && npm run compile",
     "validate": "tsc --noEmit && npm run compile",
     "clean": "rm -rf dist contracts/managed deployment.json",
-    "proof-server": "docker run -p 6300:6300 midnightnetwork/proof-server:6.1.0-alpha.6 -- midnight-proof-server --network preview",
+    "proof-server": "docker run -p 6300:6300 midnightntwrk/proof-server:8.0.3-arm64 -- midnight-proof-server --network preprod",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.15.0",
+    "@midnight-ntwrk/compact-js": "2.5.0",
     "@midnight-ntwrk/ledger-v8": "8.0.3",
-    "@midnight-ntwrk/midnight-js-contracts": "4.0.1",
-    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "4.0.1",
-    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "4.0.1",
-    "@midnight-ntwrk/midnight-js-level-private-state-provider": "4.0.1",
-    "@midnight-ntwrk/midnight-js-network-id": "4.0.1",
-    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "4.0.1",
-    "@midnight-ntwrk/midnight-js-types": "4.0.1",
-    "@midnight-ntwrk/midnight-js-utils": "4.0.1",
+    "@midnight-ntwrk/midnight-js-contracts": "4.0.2",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "4.0.2",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "4.0.2",
+    "@midnight-ntwrk/midnight-js-level-private-state-provider": "4.0.2",
+    "@midnight-ntwrk/midnight-js-network-id": "4.0.2",
+    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "4.0.2",
+    "@midnight-ntwrk/midnight-js-types": "4.0.2",
+    "@midnight-ntwrk/midnight-js-utils": "4.0.2",
     "@midnight-ntwrk/wallet-sdk-abstractions": "2.0.0",
+    "@midnight-ntwrk/wallet-sdk-address-format": "3.0.0",
     "@midnight-ntwrk/wallet-sdk-dust-wallet": "3.0.0",
     "@midnight-ntwrk/wallet-sdk-facade": "3.0.0",
     "@midnight-ntwrk/wallet-sdk-hd": "3.0.1",
@@ -39,6 +42,7 @@
     "@midnight-ntwrk/wallet-sdk-unshielded-wallet": "2.1.0",
     "chalk": "^5.3.0",
     "dotenv": "^16.3.1",
+    "enquirer": "^2.4.1",
     "ws": "^8.18.3"
   },
   "devDependencies": {
@@ -56,13 +60,5 @@
     "blockchain",
     "zero-knowledge",
     "privacy"
-  ],
-  "overrides": {
-    "@midnight-ntwrk/wallet-sdk-abstractions": "2.0.0",
-    "@midnight-ntwrk/wallet-sdk-dust-wallet": "3.0.0",
-    "@midnight-ntwrk/wallet-sdk-facade": "3.0.0",
-    "@midnight-ntwrk/wallet-sdk-hd": "3.0.1",
-    "@midnight-ntwrk/wallet-sdk-shielded": "2.1.0",
-    "@midnight-ntwrk/wallet-sdk-unshielded-wallet": "2.1.0"
-  }
+  ]
 }

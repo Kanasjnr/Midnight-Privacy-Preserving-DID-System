@@ -1,22 +1,62 @@
 pragma language_version >= 0.20 && <= 0.21;
 
+import CompactStandardLibrary;
 include 'types';
 
-export ledger schema_registry_root: Bytes<32>;
+export ledger schema_registry: Map<Bytes<32>, SchemaMetadata>;
+
+// Private witness for the creator's secret key
+witness creator_secret_key(): Bytes<32>;
+
+// Helper to derive public key from secret key
+pure circuit derive_pk(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([
+    pad(32, "midnight:pk:"),
+    sk
+  ]);
+}
 
 export circuit registerSchema(
   schema_id: Bytes<32>,
-  creator_pk_hash: Bytes<32>,
-  schema_json_hash: Bytes<32>
+  name: Bytes<32>,
+  version: Uint<8>,
+  creator_pk: Bytes<32>,
+  json_schema_hash: Bytes<32>
 ): [] {
-  const schema_hash = persistentHash<Vector<3, Bytes<32>>>([
-    schema_id,
-    creator_pk_hash,
-    schema_json_hash
-  ]);
+  const d_id = disclose(schema_id);
+  const d_name = disclose(name);
+  const d_version = disclose(version);
+  const d_creator = disclose(creator_pk);
+  const d_json_hash = disclose(json_schema_hash);
+  
+  assert(!schema_registry.member(d_id), "Schema ID already exists");
+  
+  schema_registry.insert(d_id, SchemaMetadata{
+    d_name,
+    d_version,
+    d_creator,
+    d_json_hash
+  });
+}
 
-  schema_registry_root = disclose(persistentHash<Vector<2, Bytes<32>>>([
-    schema_registry_root,
-    schema_hash
-  ]));
+export circuit updateSchema(
+  schema_id: Bytes<32>,
+  new_json_hash: Bytes<32>
+): [] {
+  const d_id = disclose(schema_id);
+  const d_new_hash = disclose(new_json_hash);
+  
+  const entry = schema_registry.lookup(d_id);
+  
+  // AUTHORIZATION: Derive creator's PK and check against registry
+  const derived_pk = derive_pk(creator_secret_key());
+  assert(entry.creator_pk == derived_pk, "Not authorized to update this schema");
+  
+  // Increment version and update hash
+  schema_registry.insert(d_id, SchemaMetadata{
+    entry.name,
+    (entry.version + 1 as Uint<8>),
+    entry.creator_pk,
+    d_new_hash
+  });
 }

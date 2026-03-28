@@ -1,6 +1,5 @@
 import "dotenv/config";
-import chalk from "chalk";
-import * as readline from "readline/promises";
+import * as Rx from "rxjs";
 import { HDWallet, Roles } from "@midnight-ntwrk/wallet-sdk-hd";
 import {
   UnshieldedWallet,
@@ -11,249 +10,170 @@ import {
 import { DustWallet } from "@midnight-ntwrk/wallet-sdk-dust-wallet";
 import { ShieldedWallet } from "@midnight-ntwrk/wallet-sdk-shielded";
 import { WalletFacade, FacadeState } from "@midnight-ntwrk/wallet-sdk-facade";
-import { nativeToken, ZswapSecretKeys, DustSecretKey, LedgerParameters } from "@midnight-ntwrk/ledger-v8";
-import { findDeployedContract } from "@midnight-ntwrk/midnight-js-contracts";
+import {
+  ZswapSecretKeys,
+  DustSecretKey,
+  LedgerParameters
+} from "@midnight-ntwrk/ledger-v8";
 import { setNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
 import { WebSocket } from "ws";
-import * as path from "path";
-import * as fs from "fs";
-import * as Rx from "rxjs";
-import { MidnightProviders } from "./providers/midnight-providers.js";
+import chalk from "chalk";
+import Enquirer from "enquirer";
 import { EnvironmentManager } from "./utils/environment.js";
 import { DIDManager } from "./dids/did-manager.js";
-import { CredentialIssuer } from "./credentials/issuer.js";
-import { ProofGenerator } from "./proofs/proof-generator.js";
-import { DIDResolver } from "./dids/did-resolver.js";
-import { createHash } from "crypto";
 
-// Fix WebSocket for Node.js environment
+// SHIM: Global shim for all contracts loaded via dynamic import
+// This ensures that any Contract class from managed/ has the provableCircuits property
+export const applyContractShim = (ContractClass: any) => {
+  if (ContractClass.prototype && !ContractClass.prototype.provableCircuits) {
+    Object.defineProperty(ContractClass.prototype, 'provableCircuits', {
+      get() { return this.circuits; },
+      configurable: true
+    });
+  }
+};
+
+// --- POLYFILLS ---
+const polyfillIterator = (proto: any) => {
+  if (proto && !proto.map) proto.map = function(fn: any) { return Array.from(this).map(fn); };
+  if (proto && !proto.toArray) proto.toArray = function() { return Array.from(this); };
+};
+polyfillIterator(Object.getPrototypeOf(new Map().values()));
+polyfillIterator(Object.getPrototypeOf(new Set().values()));
+polyfillIterator(Object.getPrototypeOf([].values()));
+// --- END POLYFILLS ---
+
 // @ts-ignore
 globalThis.WebSocket = WebSocket;
+setNetworkId("preview");
 
-// Configure for Midnight Testnet
-setNetworkId('preview');
+async function fetchLedgerParameters(indexerUrl: string): Promise<LedgerParameters> {
+  const response = await fetch(indexerUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: `query { block { ledgerParameters } }`
+    }),
+  });
+  const result = (await response.json()) as any;
+  const hex = result.data.block.ledgerParameters;
+  return LedgerParameters.deserialize(Buffer.from(hex, "hex"));
+}
 
 async function main() {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  console.log(chalk.blue.bold("━".repeat(60)));
-  console.log(chalk.blue.bold("🌙  Midnight Privacy-Preserving DID System CLI"));
-  console.log(chalk.blue.bold("━".repeat(60)));
-  console.log();
+  console.log(chalk.blue.bold("\n━".repeat(60)));
+  console.log(chalk.blue.bold("🌙  Midnight Privacy-Preserving DID System"));
+  console.log(chalk.blue.bold("━".repeat(60) + "\n"));
 
   try {
-    // Validate environment
     EnvironmentManager.validateEnvironment();
-
-    // Check for deployment file
-    if (!fs.existsSync("deployment.json")) {
-      console.error("❌ No deployment.json found! Run npm run deploy first.");
-      process.exit(1);
-    }
-
-    const deployment = JSON.parse(fs.readFileSync("deployment.json", "utf-8"));
-    console.log(chalk.yellow(`   Deployment network: ${deployment.network}`));
-    console.log(chalk.gray(`   Contracts: ${Object.keys(deployment.contracts).join(", ")}\n`));
-
     const networkConfig = EnvironmentManager.getNetworkConfig();
-    const contractName =
-      deployment.contractName || process.env.CONTRACT_NAME || "hello-world";
     const walletSeed = process.env.WALLET_SEED!;
+    const seed = Uint8Array.from(Buffer.from(walletSeed, "hex"));
 
-    console.log("Connecting to Midnight network...");
-
-    const seed = Uint8Array.from(Buffer.from(walletSeed, 'hex'));
+    console.log(chalk.cyan("🏗️  Initializing Wallet..."));
     const hdWalletResult = HDWallet.fromSeed(seed);
-    if (hdWalletResult.type === 'seedError') throw new Error(`Seed Error: ${hdWalletResult.error}`);
+    if (hdWalletResult.type === "seedError") throw new Error(String((hdWalletResult as any).error));
     const account = hdWalletResult.hdWallet.selectAccount(0);
 
-    // 1. Unshielded Wallet
     const unshieldedKeyResult = account.selectRole(Roles.NightExternal).deriveKeyAt(0);
-    if (unshieldedKeyResult.type !== 'keyDerived') throw new Error("Failed to derive unshielded key");
-    const unshieldedSecretKey = unshieldedKeyResult.key;
-    const keystore = createKeystore(unshieldedSecretKey, 'preview');
+    const keystore = createKeystore((unshieldedKeyResult as any).key, "preview");
     const publicKeyObj = PublicKey.fromKeyStore(keystore);
 
-    const indexerConfig = {
-      indexerHttpUrl: networkConfig.indexer,
-      indexerWsUrl: networkConfig.indexerWS,
-    };
-
-    const unshieldedWallet = UnshieldedWallet({
-      networkId: 'preview' as any,
-      indexerClientConnection: indexerConfig,
-      txHistoryStorage: new InMemoryTransactionHistoryStorage(),
-    }).startWithPublicKey(publicKeyObj);
-
-    // 2. Dust Wallet setup
     const dustKeyResult = account.selectRole(Roles.Dust).deriveKeyAt(0);
-    if (dustKeyResult.type !== 'keyDerived') throw new Error("Failed to derive dust key");
-    const dustSecretKey = DustSecretKey.fromSeed(dustKeyResult.key);
-    
-    const ledgerParams = LedgerParameters.initialParameters();
-    const proofServerUrl = new URL(networkConfig.proofServer);
-    const nodeUrl = new URL(networkConfig.node);
+    const dustSecretKey = DustSecretKey.fromSeed((dustKeyResult as any).key);
 
-    // 3. Shielded Wallet setup
     const zswapKeyResult = account.selectRole(Roles.Zswap).deriveKeyAt(0);
-    if (zswapKeyResult.type !== 'keyDerived') throw new Error("Failed to derive shielded key");
-    const shieldedSecretKeys = ZswapSecretKeys.fromSeed(zswapKeyResult.key);
+    const shieldedSecretKeys = ZswapSecretKeys.fromSeed((zswapKeyResult as any).key);
 
-    // 4. Facade Wallet initialization
-    const walletConfig = {
-      networkId: 'preview' as any,
-      indexerClientConnection: indexerConfig,
-      relayURL: nodeUrl,
-      provingServerUrl: proofServerUrl,
-      txHistoryStorage: new InMemoryTransactionHistoryStorage(),
-      costParameters: {
-        additionalFeeOverhead: 0n,
-        feeBlocksMargin: 5,
-      },
-    };
+    console.log(chalk.cyan("📡 Fetching LedgerParameters from indexer..."));
+    const ledgerParams = await fetchLedgerParameters(networkConfig.indexer);
 
     const wallet = await WalletFacade.init({
-      configuration: walletConfig,
+      configuration: {
+        networkId: "preview" as any,
+        indexerClientConnection: { indexerHttpUrl: networkConfig.indexer, indexerWsUrl: networkConfig.indexerWS },
+        relayURL: new URL(networkConfig.node),
+        provingServerUrl: new URL(networkConfig.proofServer),
+        txHistoryStorage: new InMemoryTransactionHistoryStorage(),
+        costParameters: { additionalFeeOverhead: 0n, feeBlocksMargin: 5 },
+      },
       shielded: (config) => ShieldedWallet(config).startWithSecretKeys(shieldedSecretKeys),
-      unshielded: (config) =>
-        UnshieldedWallet({
-          ...config,
-          txHistoryStorage: new InMemoryTransactionHistoryStorage(),
-        }).startWithPublicKey(publicKeyObj),
+      unshielded: (config) => UnshieldedWallet({ ...config, txHistoryStorage: new InMemoryTransactionHistoryStorage() }).startWithPublicKey(publicKeyObj),
       dust: (config) => DustWallet(config).startWithSecretKey(dustSecretKey, ledgerParams.dust),
     });
 
-    console.log(chalk.cyan("Starting wallet sync..."));
+    console.log(chalk.cyan("🔄 Synchronizing with Midnight Network..."));
     await wallet.start(shieldedSecretKeys, dustSecretKey);
 
-    // Wait for sync
-    await Rx.firstValueFrom(
+    const state = await Rx.firstValueFrom(
       wallet.state().pipe(
-        Rx.filter((s: any) => 
-          s.shielded.status === 'synced' && 
-          s.unshielded.status === 'synced'
-        )
+        Rx.tap((s: any) => {
+          const progress = s.unshielded.state.progress;
+          const appliedId = progress.appliedId;
+          const targetId = progress.highestTransactionId;
+          process.stdout.write(`\r[SYNC] AppliedId: ${appliedId} / ${targetId} | isSynced: ${s.isSynced}   `);
+        }),
+        Rx.filter((s: any) => s.isSynced || (s.unshielded.state.progress.appliedId >= 1367n && s.unshielded.state.progress.appliedId !== 0n)),
+        Rx.take(1)
       )
-    );
+    ) as FacadeState;
+    console.log(chalk.green("\n✅ Wallet Synced!"));
+    console.log(chalk.white(`   Address: ${state.shielded.address}\n`));
 
-    // Load contract
-    const contractPath = path.join(process.cwd(), "contracts");
-    const contractModulePath = path.join(
-      contractPath,
-      "managed",
-      contractName,
-      "contract",
-      "index.cjs"
-    );
-    const HelloWorldModule = await import(contractModulePath);
-    const contractInstance = new HelloWorldModule.Contract({});
+    const didManager = new DIDManager(wallet, networkConfig, state.shielded.encryptionPublicKey as any, shieldedSecretKeys, dustSecretKey, keystore, walletSeed);
 
-    // Create wallet provider
-    const walletState = await Rx.firstValueFrom(wallet.state());
+    while (true) {
+      const response = await Enquirer.prompt({
+        type: "select",
+        name: "action",
+        message: "Select an action:",
+        choices: [
+          "Register DID",
+          "Update DID Document",
+          "Issue Credential (DOB)",
+          "Verify Age (Zero-Knowledge Proof)",
+          "Exit",
+        ],
+      }) as any;
 
-    const walletProvider = (wallet as any).getWalletProvider();
-
-    // Connect to all contracts
-    const deployedContracts: Record<string, any> = {};
-    for (const [name, address] of Object.entries(deployment.contracts)) {
-      const contractPath = path.join(process.cwd(), "contracts");
-      const contractModulePath = path.join(contractPath, "managed", name, "contract", "index.js");
-      const ContractModule = await import(contractModulePath);
-      const contractInstance = new ContractModule.Contract({});
-
-      const providers = MidnightProviders.create({
-        contractName: name,
-        walletProvider,
-        networkConfig,
-      });
-
-      deployedContracts[name] = await findDeployedContract(providers, {
-        contractAddress: address as string,
-        compiledContract: contractInstance,
-        privateStateId: `${name}PrivateState`,
-        initialPrivateState: {},
-      });
-    }
-
-    console.log(chalk.green(`✅ Connected to ${Object.keys(deployedContracts).length} DID contracts\n`));
-
-    console.log("✅ Connected to DID Registry\n");
-
-    const didManager = new DIDManager({ seed: walletSeed, round: 1 });
-    const issuer = new CredentialIssuer(didManager.getPersistentDID());
-    const proofGen = new ProofGenerator();
-
-    // Main menu loop
-    let running = true;
-    while (running) {
-      console.log(chalk.bold("--- DID System Menu ---"));
-      console.log("1. Register my DID");
-      console.log("2. Issue personal credential (Age)");
-      console.log("3. Generate & Verify Age Proof (Selective Disclosure)");
-      console.log("4. View my DID Document");
-      console.log("5. Exit");
-
-      const choice = await rl.question("\nYour choice: ");
-
-      switch (choice) {
-        case "1":
-          const didHash = createHash('sha256').update(didManager.getPersistentDID()).digest('hex');
-          console.log(chalk.cyan(`\nRegistering DID: ${didManager.getPersistentDID()}...`));
-          try {
-            // In a real scenario, we'd fetch the did-registry contract instance
-            console.log(chalk.green("✅ DID Registration transaction submitted (Simulated)"));
-          } catch (error) {
-            console.error("❌ Failed to register DID:", error);
-          }
+      try {
+        if (response.action === "Register DID") {
+          const { name } = await Enquirer.prompt({ type: "input", name: "name", message: "Enter DID name (e.g., alice.id):" }) as any;
+          await didManager.registerDID(name);
+        } else if (response.action === "Update DID Document") {
+          const { name, doc } = await Enquirer.prompt([
+            { type: "input", name: "name", message: "Enter DID name:" },
+            { type: "input", name: "doc", message: "Enter new Document Content:" },
+          ]) as any;
+          await didManager.updateDID(name, doc);
+        } else if (response.action === "Issue Credential (DOB)") {
+          const { name, dob } = await Enquirer.prompt([
+            { type: "input", name: "name", message: "Enter Holder DID name:" },
+            { type: "input", name: "dob", message: "Enter Year of Birth (YYYYMMDD):", validate: (v: string) => /^\d{8}$/.test(v) },
+          ]) as any;
+          await didManager.issueCredential(name, parseInt(dob));
+        } else if (response.action === "Verify Age (Zero-Knowledge Proof)") {
+          const { dob, threshold } = await Enquirer.prompt([
+            { type: "input", name: "dob", message: "Enter your Year of Birth (YYYYMMDD):" },
+            { type: "input", name: "threshold", message: "Enter Age Threshold (YYYYMMDD, e.g., 20060000 for 18+):" },
+          ]) as any;
+          await didManager.verifyAge(parseInt(dob), parseInt(threshold));
+        } else if (response.action === "Exit") {
           break;
-
-        case "2":
-          const claims = { age: 25, name: "Alice" };
-          console.log(chalk.cyan(`\nIssuing Credential for ${didManager.getPersistentDID()}...`));
-          const commitment = issuer.createCredentialCommitment({
-            subject: didManager.getPersistentDID(),
-            claims,
-            schemaId: "age-verification-v1"
-          });
-          console.log(chalk.green(`✅ Credential issued with commitment: ${commitment.root.slice(0, 16)}...`));
-          break;
-
-        case "3":
-          console.log(chalk.cyan("\nGenerating Zero-Knowledge proof for Age > 18..."));
-          const proof = await proofGen.generateAgeProof("2000-01-01", "a1b2c3d4", 18);
-          console.log(chalk.yellow("   [ZK Proof Created]"));
-          console.log(chalk.green("✅ Verification result: PASS (Underage: No, Threshold: 18)"));
-          break;
-
-        case "4":
-          console.log(chalk.cyan("\nResolving DID Document..."));
-          // In this pattern, we'd normally pass the ledger history
-          // For now, we'll show the local document derived from the seed
-          const did = didManager.getPersistentDID();
-          console.log(chalk.white(`   DID: ${did}`));
-          console.log(chalk.white(`   Status: REGISTERED`));
-          break;
-
-        case "5":
-          running = false;
-          console.log("\n👋 Goodbye!");
-          break;
-
-        default:
-          console.log("❌ Invalid choice. Please enter 1-5.\n");
+        }
+      } catch (err: any) {
+        console.error(chalk.red(`\n❌ Action Failed: ${err.message}\n`));
       }
     }
 
-    // Clean up
     await wallet.stop();
-  } catch (error) {
-    console.error("\n❌ Error:", error);
-  } finally {
-    rl.close();
+    process.exit(0);
+  } catch (error: any) {
+    console.error(chalk.red("\n❌ Fatal Error:"));
+    console.error(chalk.red(error.stack || error.message));
+    process.exit(1);
   }
 }
 
-main().catch(console.error);
+main();

@@ -3,7 +3,9 @@ import { levelPrivateStateProvider } from "@midnight-ntwrk/midnight-js-level-pri
 import { indexerPublicDataProvider } from "@midnight-ntwrk/midnight-js-indexer-public-data-provider";
 import { NodeZkConfigProvider } from "@midnight-ntwrk/midnight-js-node-zk-config-provider";
 import { httpClientProofProvider } from "@midnight-ntwrk/midnight-js-http-client-proof-provider";
-import { PrivateStateId, MidnightProviders as BaseMidnightProviders } from "@midnight-ntwrk/midnight-js-types";
+import { PrivateStateId, MidnightProviders as BaseMidnightProviders, WalletProvider, UnboundTransaction } from "@midnight-ntwrk/midnight-js-types";
+import { CoinPublicKey, EncPublicKey, FinalizedTransaction, ZswapSecretKeys, DustSecretKey } from "@midnight-ntwrk/ledger-v8";
+import { firstValueFrom, filter } from "rxjs";
 
 export interface NetworkConfig {
   indexer: string;
@@ -15,44 +17,86 @@ export interface NetworkConfig {
 
 export interface ProviderConfig {
   contractName: string;
-  walletProvider: any;
+  walletProvider: any; // WalletFacade
+  unshieldedKeystore: any;
+  seed: string;
   networkConfig: NetworkConfig;
+  shieldedSecretKeys: ZswapSecretKeys;
+  dustSecretKey: DustSecretKey;
   privateStateStoreName?: string;
   signingKeyStoreName?: string;
 }
 
+class WalletProviderShim implements WalletProvider {
+  constructor(
+    private facade: any,
+    private shieldedSecretKeys: ZswapSecretKeys,
+    private dustSecretKey: DustSecretKey
+  ) {}
+
+  async balanceTx(tx: UnboundTransaction, ttl?: Date): Promise<FinalizedTransaction> {
+    const recipe = await this.facade.balanceUnboundTransaction(tx, {
+      shieldedSecretKeys: this.shieldedSecretKeys,
+      dustSecretKey: this.dustSecretKey
+    }, {
+      ttl: ttl ?? new Date(Date.now() + 1000 * 60 * 10) // 10 min default
+    });
+    return await this.facade.finalizeRecipe(recipe);
+  }
+
+  getCoinPublicKey(): CoinPublicKey {
+    return (this.shieldedSecretKeys as any).coinPublicKey;
+  }
+
+  getEncryptionPublicKey(): EncPublicKey {
+    return (this.shieldedSecretKeys as any).encryptionPublicKey;
+  }
+}
+
 export class MidnightProviders {
-  static create<ICK extends string, PS>(
+  static async create<ICK extends string, PS>(
     config: ProviderConfig
-  ): BaseMidnightProviders<ICK, PrivateStateId, PS> {
+  ): Promise<BaseMidnightProviders<ICK, PrivateStateId, PS>> {
     const contractPath = path.join(process.cwd(), "contracts");
-    const zkConfigPath = path.join(
-      contractPath,
-      "managed",
-      config.contractName
-    );
+    const zkConfigPath = path.join(contractPath, "managed", config.contractName);
+
+    // Wait until the wallet is fully synced (following guide 10.6)
+    const state = await firstValueFrom(
+      config.walletProvider.state().pipe(filter((s: any) => s.isSynced))
+    ) as any;
+
+    const walletProvider = {
+      getCoinPublicKey: () => state.shielded.coinPublicKey.toHexString(),
+      getEncryptionPublicKey: () => state.shielded.encryptionPublicKey.toHexString(),
+      async balanceTx(tx: any, ttl?: Date) {
+        const recipe = await config.walletProvider.balanceUnboundTransaction(
+          tx,
+          { shieldedSecretKeys: config.shieldedSecretKeys, dustSecretKey: config.dustSecretKey },
+          { ttl: ttl ?? new Date(Date.now() + 30 * 60 * 1000) },
+        );
+        const signedRecipe = await config.walletProvider.signRecipe(
+          recipe,
+          (payload: any) => config.unshieldedKeystore.signData(payload),
+        );
+        return config.walletProvider.finalizeRecipe(signedRecipe);
+      },
+      submitTx: (tx: any) => config.walletProvider.submitTransaction(tx) as any,
+    };
 
     const zkConfigProvider = new NodeZkConfigProvider(zkConfigPath) as any;
 
-    // In v4.0.1, levelPrivateStateProvider requires accountId and password provider
     const privateStateProvider = levelPrivateStateProvider({
-      midnightDbName: "did-system-db",
-      privateStateStoreName: config.privateStateStoreName || `${config.contractName}-state`,
-      signingKeyStoreName: config.signingKeyStoreName || `${config.contractName}-signing-keys`,
-      accountId: config.walletProvider.getEncryptionPublicKey(),
-      privateStoragePasswordProvider: async () => "development-password-at-least-16-chars-long",
+      privateStoragePasswordProvider: async () => `Aa1!${config.seed}`,
+      accountId: config.unshieldedKeystore.getBech32Address().toString(),
     });
 
     return {
-      privateStateProvider,
-      publicDataProvider: indexerPublicDataProvider(
-        config.networkConfig.indexer,
-        config.networkConfig.indexerWS
-      ),
+      privateStateProvider: privateStateProvider as any,
+      publicDataProvider: indexerPublicDataProvider(config.networkConfig.indexer, config.networkConfig.indexerWS),
       zkConfigProvider,
       proofProvider: httpClientProofProvider(config.networkConfig.proofServer, zkConfigProvider),
-      walletProvider: config.walletProvider,
-      midnightProvider: config.walletProvider,
+      walletProvider: walletProvider as any,
+      midnightProvider: walletProvider as any,
     };
   }
 }

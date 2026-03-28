@@ -1,8 +1,8 @@
 pragma language_version >= 0.20 && <= 0.21;
 
-include 'types';
+import CompactStandardLibrary;
 
-export ledger dummy: Field;
+export ledger dummy: Field; // Keep for ZK generation trigger
 
 witness dateOfBirth(): Uint<32>; // YYYYMMDD format
 witness salt(): Bytes<32>;
@@ -12,7 +12,12 @@ export circuit verifyAge(
   threshold_years: Uint<32>,
   expected_commitment: Bytes<32>
 ): [] {
-  const _force_zk = dummy; // Read ledger to force ZK artifact generation
+  const _force_zk = dummy; 
+  
+  const d_current_date = disclose(current_date);
+  const d_threshold = disclose(threshold_years);
+  const d_expected = disclose(expected_commitment);
+
   const dob = dateOfBirth();
   const s = salt();
 
@@ -21,11 +26,8 @@ export circuit verifyAge(
     (dob as Field) as Bytes<32>, 
     s
   ]);
-  assert(computed_commitment == expected_commitment, "Invalid credential commitment");
+  assert(computed_commitment == d_expected, "Invalid credential commitment");
 
   // 2. Verified age check: current_date - dob >= (threshold_years * 10000)
-  assert(current_date - dob >= (threshold_years * 10000 as Uint<32>), "Underage");
+  assert(d_current_date - dob >= (d_threshold * 10000 as Uint<32>), "Underage");
 }
-
-
-

@@ -1,33 +1,48 @@
 pragma language_version >= 0.20 && <= 0.21;
 
+import CompactStandardLibrary;
 include 'types';
 
-// The "Actual" professional pattern for 0.21.0: State Commitment Root
-export ledger registry_root: Bytes<32>;
+export ledger did_registry: Map<Bytes<32>, DIDEntry>;
+
+// Private witness to provide the secret key for authorization
+witness controller_secret_key(): Bytes<32>;
+
+// Helper to derive public key from secret key
+pure circuit derive_pk(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([
+    pad(32, "midnight:pk:"),
+    sk
+  ]);
+}
 
 export circuit registerDID(
-  did_hash: Bytes<32>, 
-  document_commitment: Bytes<32>, 
+  did_id: Bytes<32>, 
+  document_commitment: Bytes<32>,
   controller_pk: Bytes<32>
 ): [] {
-  const entry_hash = persistentHash<Vector<3, Bytes<32>>>([
-    did_hash,
-    document_commitment,
-    controller_pk
-  ]);
-
-  registry_root = disclose(persistentHash<Vector<2, Bytes<32>>>([
-    registry_root,
-    entry_hash
-  ]));
+  const d_id = disclose(did_id);
+  const d_doc = disclose(document_commitment);
+  const d_pk = disclose(controller_pk);
+  
+  assert(!did_registry.member(d_id), "DID already exists");
+  
+  did_registry.insert(d_id, DIDEntry{ d_doc, d_pk });
 }
 
 export circuit updateDocument(
-  current_entry_hash: Bytes<32>,
+  did_id: Bytes<32>,
   new_commitment: Bytes<32>
 ): [] {
-  registry_root = disclose(persistentHash<Vector<2, Bytes<32>>>([
-    registry_root,
-    new_commitment
-  ]));
+  const d_id = disclose(did_id);
+  const d_new_doc = disclose(new_commitment);
+  
+  const entry = did_registry.lookup(d_id);
+  
+  // AUTHORIZATION: Derive PK from witness and check against registry
+  const derived_pk = derive_pk(controller_secret_key());
+  assert(entry.controller_pk == derived_pk, "Not authorized to update this DID");
+  
+  // Use the SAME controller PK for the update
+  did_registry.insert(d_id, DIDEntry{ d_new_doc, entry.controller_pk });
 }

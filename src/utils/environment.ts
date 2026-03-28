@@ -10,9 +10,16 @@ export class EnvironmentManager {
       preview: {
         indexer: "https://indexer.preview.midnight.network/api/v3/graphql",
         indexerWS: "wss://indexer.preview.midnight.network/api/v3/graphql/ws",
-        node: "https://rpc.preview.midnight.network",
+        node: "wss://rpc.preview.midnight.network",
         proofServer: process.env.PROOF_SERVER_URL || "http://localhost:6300",
         name: "Preview",
+      },
+      preprod: {
+        indexer: "https://indexer.preprod.midnight.network/api/v3/graphql",
+        indexerWS: "wss://indexer.preprod.midnight.network/api/v3/graphql/ws",
+        node: "wss://rpc.preprod.midnight.network",
+        proofServer: process.env.PROOF_SERVER_URL || "http://localhost:6300",
+        name: "Preprod",
       },
     };
 
