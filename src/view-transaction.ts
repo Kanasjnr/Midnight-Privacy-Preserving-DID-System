@@ -60,7 +60,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log("\n" + chalk.blue.bold("━".repeat(60)));
+  console.log(chalk.blue.bold("━".repeat(60)));
   console.log(chalk.blue.bold("🔍 Midnight Transaction Detail Viewer"));
   console.log(chalk.blue.bold("━".repeat(60)) + "\n");
 

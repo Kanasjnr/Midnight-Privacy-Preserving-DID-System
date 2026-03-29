@@ -69,7 +69,7 @@ async function fetchLedgerParameters(indexerUrl: string): Promise<LedgerParamete
 }
 
 async function main() {
-  console.log(chalk.blue.bold("\n━".repeat(60)));
+  console.log(chalk.blue.bold("━".repeat(60)));
   console.log(chalk.blue.bold("🌙  Midnight Privacy-Preserving DID System"));
   console.log(chalk.blue.bold("━".repeat(60) + "\n"));
 
@@ -149,7 +149,7 @@ async function main() {
 
       try {
         if (response.action === "Register DID") {
-          const { name } = await Enquirer.prompt({ type: "input", name: "name", message: "Enter DID name (e.g., alice.id):" }) as any;
+          const { name } = await Enquirer.prompt({ type: "input", name: "name", message: "Enter DID name (e.g., alice.night):" }) as any;
           await didManager.registerDID(name);
         } else if (response.action === "Update DID Document") {
           const { name, doc } = await Enquirer.prompt([
@@ -165,7 +165,7 @@ async function main() {
           await didManager.issueCredential(name, parseInt(dob));
         } else if (response.action === "Verify Age (Zero-Knowledge Proof)") {
           const { id, dob, threshold } = await Enquirer.prompt([
-            { type: "input", name: "id", message: "Enter DID name (e.g., alice.id):" },
+            { type: "input", name: "id", message: "Enter DID name (e.g., alice.night):" },
             { type: "input", name: "dob", message: "Enter your Year of Birth (YYYYMMDD):", validate: (v: string) => /^\d{8}$/.test(v) },
             { type: "input", name: "threshold", message: "Enter Age Threshold (in years, e.g., 18):", validate: (v: string) => /^\d+$/.test(v) },
           ]) as any;

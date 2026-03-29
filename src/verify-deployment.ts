@@ -79,7 +79,7 @@ async function fetchLedgerParameters(indexerUrl: string): Promise<LedgerParamete
 }
 
 async function main() {
-  console.log(chalk.blue.bold("\n━".repeat(60)));
+  console.log(chalk.blue.bold("━".repeat(60)));
   console.log(chalk.blue.bold("🌙  Midnight DID System Verification"));
   console.log(chalk.blue.bold("━".repeat(60) + "\n"));
 
@@ -140,7 +140,7 @@ async function main() {
 
     const didManager = new DIDManager(wallet, networkConfig, state.shielded.encryptionPublicKey as any, shieldedSecretKeys, dustSecretKey, unshieldedKeystore, walletSeed);
 
-    const testDID = `test-${Date.now().toString().slice(-6)}.id`;
+    const testDID = `test-${Date.now().toString().slice(-6)}.night`;
     
     // 1. Register DID
     console.log(chalk.yellow(`\n📝 Step 1: Registering DID '${testDID}'...`));

@@ -65,7 +65,7 @@ async function fetchLedgerParameters(indexerUrl: string): Promise<LedgerParamete
 }
 
 async function main() {
-  console.log("\n" + chalk.blue.bold("━".repeat(60)));
+  console.log(chalk.blue.bold("━".repeat(60)));
   console.log(chalk.blue.bold("🌙  Midnight Wallet Balance Checker"));
   console.log(chalk.blue.bold("━".repeat(60) + "\n"));
 
