@@ -2,7 +2,7 @@ import path from "path";
 import { levelPrivateStateProvider } from "@midnight-ntwrk/midnight-js-level-private-state-provider";
 import { indexerPublicDataProvider } from "@midnight-ntwrk/midnight-js-indexer-public-data-provider";
 import { NodeZkConfigProvider } from "@midnight-ntwrk/midnight-js-node-zk-config-provider";
-import { httpClientProofProvider } from "@midnight-ntwrk/midnight-js-http-client-proof-provider";
+import { httpClientProofProvider, httpClientProvingProvider } from "@midnight-ntwrk/midnight-js-http-client-proof-provider";
 import { PrivateStateId, MidnightProviders as BaseMidnightProviders, WalletProvider, UnboundTransaction } from "@midnight-ntwrk/midnight-js-types";
 import { CoinPublicKey, EncPublicKey, FinalizedTransaction, ZswapSecretKeys, DustSecretKey } from "@midnight-ntwrk/ledger-v8";
 import { firstValueFrom, filter } from "rxjs";
@@ -95,8 +95,9 @@ export class MidnightProviders {
       publicDataProvider: indexerPublicDataProvider(config.networkConfig.indexer, config.networkConfig.indexerWS),
       zkConfigProvider,
       proofProvider: httpClientProofProvider(config.networkConfig.proofServer, zkConfigProvider),
+      provingProvider: httpClientProvingProvider(config.networkConfig.proofServer, zkConfigProvider),
       walletProvider: walletProvider as any,
       midnightProvider: walletProvider as any,
-    };
+    } as any;
   }
 }

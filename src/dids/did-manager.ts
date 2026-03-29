@@ -12,6 +12,7 @@ import {
 import { createHash, randomBytes } from 'crypto';
 import path from 'path';
 import fs from 'fs';
+import { getAgeWitnesses, getControllerWitness } from '../proofs/witness-context.js';
 
 export class DIDManager {
   private encryptionPublicKey: Uint8Array;
@@ -84,40 +85,10 @@ export class DIDManager {
     }
 
     const witnesses = {
-      controller_secret_key: (context: any) => {
-        const fullKey = (
-          this.shieldedSecretKeys as any
-        ).coinSecretKey.yesIKnowTheSecurityImplicationsOfThis_serialize();
-        const rawKey = fullKey.slice(-32);
-        console.log(
-          `[WITNESS] controller_secret_key called. Slicing to 32 bytes.`,
-        );
-        return [context, rawKey];
-      },
-      creator_secret_key: (context: any) => {
-        const fullKey = (
-          this.shieldedSecretKeys as any
-        ).coinSecretKey.yesIKnowTheSecurityImplicationsOfThis_serialize();
-        const rawKey = fullKey.slice(-32);
-        return [context, rawKey];
-      },
-      issuer_secret_key: (context: any) => {
-        const fullKey = (
-          this.shieldedSecretKeys as any
-        ).coinSecretKey.yesIKnowTheSecurityImplicationsOfThis_serialize();
-        const rawKey = fullKey.slice(-32);
-        return [context, rawKey];
-      },
-      dateOfBirth: (context: any) => {
-        if (!this.currentProofData)
-          throw new Error("No proof data available for witness");
-        return [context, BigInt(this.currentProofData.dob)];
-      },
-      salt: (context: any) => {
-        if (!this.currentProofData)
-          throw new Error("No proof data available for witness");
-        return [context, this.currentProofData.salt];
-      },
+      ...getControllerWitness(this.shieldedSecretKeys),
+      creator_secret_key: getControllerWitness(this.shieldedSecretKeys).controller_secret_key,
+      issuer_secret_key: getControllerWitness(this.shieldedSecretKeys).controller_secret_key,
+      ...getAgeWitnesses(() => this.currentProofData),
     };
 
     return (CompiledContract as any)

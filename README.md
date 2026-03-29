@@ -45,12 +45,18 @@ This project demonstrates Midnight's core privacy capabilities:
 
 3. **Compile, Build, and Deploy**:
    ```bash
-   npm run setup
+    - Compiles the Compact contracts (`contracts/*.compact`)
+    - Builds the TypeScript source into the `dist/` directory
+    - Deploys the contracts to the Midnight network
    ```
-   This command sequentially:
-   - Compiles the Compact contracts (`contracts/*.compact`)
-   - Builds the TypeScript source into the `dist/` directory
-   - Deploys the contracts to the Midnight network
+
+### ⚠️ Mandatory Compiler Patch
+
+To align the native Compact compiler (v0.5.x) with the 0.15.0 runtime, you MUST run this patch after every compilation:
+
+```bash
+find contracts/managed -name "index.js" -exec sed -i '' "s/checkRuntimeVersion('0.14.0')/checkRuntimeVersion('0.15.0')/g" {} +
+```
 
 ### Manual Compilation and Building
 
@@ -100,11 +106,6 @@ And check that the build succeeds:
 npm run build
 ```
 
----
-
 Built with 🌙 Midnight Network.
 
-
-Midnight preview faucet
-This faucet dispenses a small amount of test tokens called tNight. tNight is intended for testing purposes on Midnight's preview only.
-
+Midnight Preprod faucet:
