@@ -1,4 +1,5 @@
 import { WalletFacade } from "@midnight-ntwrk/wallet-sdk-facade";
+import chalk from "chalk";
 import { MidnightProviders, NetworkConfig } from "../providers/midnight-providers.js";
 import { findDeployedContract } from "@midnight-ntwrk/midnight-js-contracts";
 import { CompiledContract } from "@midnight-ntwrk/compact-js";
@@ -14,6 +15,10 @@ import path from 'path';
 import fs from 'fs';
 import { getAgeWitnesses, getControllerWitness } from '../proofs/witness-context.js';
 
+/**
+ * Manages the lifecycle of Decentralized Identities (DIDs) on the Midnight network.
+ * Handles registration, document updates, and zero-knowledge credential issuance/verification.
+ */
 export class DIDManager {
   private encryptionPublicKey: Uint8Array;
   private currentProofData: { dob: number; salt: Uint8Array } | null = null;
@@ -35,6 +40,10 @@ export class DIDManager {
     }
   }
 
+  /**
+   * Derives a Compact public key from a raw secret key.
+   * Internal hash logic matches the recursive circuit's persistence rules.
+   */
   private deriveCompactPk(sk: Uint8Array): Uint8Array {
     const bytes32 = new CompactTypeBytes(32);
     const vector2 = new CompactTypeVector(2, bytes32);
@@ -45,6 +54,10 @@ export class DIDManager {
     return persistentHash(vector2, [prefix, sk]);
   }
 
+  /**
+   * Generates a credential commitment for zero-knowledge age verification.
+   * Utilizes persistent hashing to bind the Date of Birth and blinding salt.
+   */
   private deriveCredentialCommitment(
     dob: number,
     salt: Uint8Array,
@@ -112,6 +125,10 @@ export class DIDManager {
     return createHash("sha256").update(name).digest();
   }
 
+  /**
+   * Registers a new DID name on-chain.
+   * Performs an asynchronous transaction to bind the DID name to a document commitment.
+   */
   public async registerDID(name: string): Promise<void> {
     const didHash = this.deriveDIDHash(name);
     const docCommitment = createHash("sha256")
@@ -141,7 +158,7 @@ export class DIDManager {
     });
 
     await (found.callTx as any).registerDID(didHash, docCommitment, compactPk);
-    console.log(`✅ DID ${name} registered successfully!`);
+    console.log(chalk.green(`✅ DID ${name} registered successfully!`));
   }
 
   public async updateDID(name: string, newDoc: string): Promise<void> {
@@ -165,6 +182,10 @@ export class DIDManager {
     console.log(`✅ DID ${name} updated successfully!`);
   }
 
+  /**
+   * Issues a zero-knowledge credential to a specific DID holder.
+   * The credential contains the encrypted DOB commitment and is stored locally.
+   */
   public async issueCredential(
     holderDIDName: string,
     dob: number,

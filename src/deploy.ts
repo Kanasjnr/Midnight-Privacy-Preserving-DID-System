@@ -26,44 +26,20 @@ import { WebSocket } from 'ws';
 import 'dotenv/config';
 import { EnvironmentManager } from './utils/environment.js';
 import { MidnightProviders } from './providers/midnight-providers.js';
+import { initializePolyfills } from "./utils/polyfills.js";
 
-// --- ROBUST ITERATOR POLYFILLS ---
-const polyfillIterator = (proto: any) => {
-  if (!proto) return;
-  const methods = ['map', 'filter', 'every', 'some', 'find', 'reduce', 'forEach', 'toArray'];
-  for (const method of methods) {
-    if (!proto[method]) {
-      proto[method] = function (this: any, ...args: any[]) {
-        const arr = Array.from(this);
-        if (method === 'toArray') return arr;
-        return (arr[method as any] as any)(...args);
-      };
-    }
-  }
-};
+/**
+ * Initializes required SDK polyfills for environment compatibility.
+ */
+initializePolyfills();
 
-// Apply to Map/Set/Array iterators
-polyfillIterator(Object.getPrototypeOf(new Map().values()));
-polyfillIterator(Object.getPrototypeOf(new Map().entries()));
-polyfillIterator(Object.getPrototypeOf(new Map().keys()));
-polyfillIterator(Object.getPrototypeOf(new Set().values()));
-polyfillIterator(Object.getPrototypeOf([].values()));
-
-// Also polyfill Array.prototype with .toArray() to allow chaining after map/filter
-if (!(Array.prototype as any).toArray) {
-  Object.defineProperty(Array.prototype, 'toArray', {
-    value: function () { return this; },
-    enumerable: false,
-    configurable: true
-  });
-}
-
-// @ts-expect-error Required for wallet sync
-globalThis.WebSocket = WebSocket;
 const networkConfig = EnvironmentManager.getNetworkConfig();
 setNetworkId(networkConfig.name.toLowerCase() as any);
 
-// Monkey-patch to fix compatibility
+/**
+ * Applies a compatibility patch to the Contract class to ensure 'provableCircuits' 
+ * resolution during the deployment phase.
+ */
 function patchContract(ContractClass: any) {
     if (ContractClass && ContractClass.prototype && !Object.getOwnPropertyDescriptor(ContractClass.prototype, 'provableCircuits')) {
         Object.defineProperty(ContractClass.prototype, 'provableCircuits', {
@@ -74,6 +50,9 @@ function patchContract(ContractClass: any) {
     }
 }
 
+/**
+ * Derives actor keys (Zswap, NightExternal, Dust) from a wallet seed.
+ */
 function deriveKeys(seed: string) {
   const hdWallet = HDWallet.fromSeed(Buffer.from(seed, "hex"));
   if (hdWallet.type !== "seedOk") throw new Error("Invalid seed");
@@ -86,6 +65,9 @@ function deriveKeys(seed: string) {
   return result.keys;
 }
 
+/**
+ * Loads a compiled Compact contract and attaches specified witnesses or vacancies.
+ */
 async function loadContract(name: string, witnesses: any = null) {
     const zkConfigPath = path.resolve(process.cwd(), 'contracts', 'managed', name);
     const contractPath = path.join(zkConfigPath, 'contract', 'index.js');
@@ -187,10 +169,6 @@ async function main() {
     });
     deploymentInfo.contracts["did-registry"] = deployedDID.deployTxData.public.contractAddress;
     console.log(chalk.green(`   ✅ deployed at: ${deploymentInfo.contracts["did-registry"]}`));
-
-    // ... repeat for other contracts ...
-    // (I'll add them back in the next step to keep the file size manageable if needed, 
-    // but I've already written them before, so I'll include them all here).
 
     // 2. Schema Registry
     console.log(chalk.yellow("\n🚀 Deploying schema-registry..."));
