@@ -10,7 +10,12 @@ This system allows users to:
 - **Issue Credentials**: Authorized issuers can issue verifiable credentials (e.g., age verification) to holders.
 - **Privacy-Preserving Verification**: Holders can prove specific claims (like being over 18) using zero-knowledge witnesses without disclosing their actual date of birth or other private data.
 
-## 🏗️ Architecture & Protocol Flow
+### Tutorial & Walkthrough
+
+For a comprehensive guide on how this system was built and how to use it, check out the official walkthrough on Dev.to:
+**[Building Privacy-Preserving Decentralized Identity on Midnight](https://dev.to/midnight-aliit/building-privacy-preserving-decentralized-identity-on-midnight-3abn)**
+
+## Architecture & Protocol Flow
 
 This system achieves **Selective Disclosure** by separating private identity attributes (like birthdates) from verifiable public assertions. The logic moves from local witness generation to on-chain commitment verification.
 
