@@ -2,7 +2,7 @@
   "name": "midnight-did-system",
   "version": "1.0.0",
   "type": "module",
-  "description": "A Midnight Network application created with create-midnight-app",
+  "description": "Privacy-Preserving Decentralized Identity (DID) System on the Midnight Network",
   "author": "",
   "license": "MIT",
   "scripts": {
@@ -12,16 +12,13 @@
     "compile": "compact compile contracts/did-registry.compact contracts/managed/did-registry && compact compile contracts/schema-registry.compact contracts/managed/schema-registry && compact compile contracts/credential-issuer.compact contracts/managed/credential-issuer && compact compile contracts/proof-verifier.compact contracts/managed/proof-verifier",
     "build": "tsc",
     "deploy": "node dist/deploy.js",
-    "verify": "npm run build && node dist/verify-deployment.js",
-    "cli": "node dist/cli.js",
-    "check-balance": "npm run build && node dist/check-balance.js",
-    "register-dust": "npm run build && node dist/register-dust.js",
-    "view-tx": "npm run build && node dist/view-transaction.js",
+    "start": "node dist/cli.js",
+    "cli": "npm run start",
+    "check-balance": "node dist/check-balance.js",
+    "register-dust": "node dist/register-dust.js",
     "reset": "rm -rf contracts/managed deployment.json dist && npm run compile",
-    "validate": "tsc --noEmit && npm run compile",
     "clean": "rm -rf dist contracts/managed deployment.json",
-    "proof-server": "docker run -p 6300:6300 midnightntwrk/proof-server:8.0.3-arm64 -- midnight-proof-server --network preprod",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "proof-server": "docker run -p 6300:6300 midnightntwrk/proof-server:8.0.3-arm64 -- midnight-proof-server --network preprod"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.15.0",

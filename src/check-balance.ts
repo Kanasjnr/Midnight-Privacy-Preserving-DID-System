@@ -16,43 +16,29 @@ import {
   unshieldedToken,
 } from "@midnight-ntwrk/ledger-v8";
 import { setNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
-import { WebSocket } from "ws";
 import * as Rx from "rxjs";
 import chalk from "chalk";
 import { EnvironmentManager } from "./utils/environment.js";
+import { initializePolyfills } from "./utils/polyfills.js";
 
-// --- COMPREHENSIVE ITERATOR POLYFILLS ---
-const polyfillIterator = (proto: any) => {
-  if (!proto) return;
-  const methods = ['map', 'filter', 'every', 'some', 'find', 'reduce', 'forEach', 'toArray'];
-  for (const method of methods) {
-    if (!proto[method]) {
-      proto[method] = function (this: any, ...args: any[]) {
-        const arr = Array.from(this);
-        if (method === 'toArray') return arr;
-        return (arr[method as any] as any)(...args);
-      };
-    }
-  }
-};
 
-polyfillIterator(Object.getPrototypeOf(new Map().values()));
-polyfillIterator(Object.getPrototypeOf(new Map().entries()));
-polyfillIterator(Object.getPrototypeOf(new Map().keys()));
-polyfillIterator(Object.getPrototypeOf(new Set().values()));
-polyfillIterator(Object.getPrototypeOf([].values()));
-
-if (!(Array.prototype as any).toArray) {
-  Object.defineProperty(Array.prototype, 'toArray', {
-    value: function () { return this; },
-    enumerable: false,
-    configurable: true
+function formatMidnight(amount: bigint): string {
+  const units = Number(amount) / 1_000_000;
+  return units.toLocaleString(undefined, {
+    minimumFractionDigits: 6,
+    maximumFractionDigits: 6,
   });
 }
 
-// @ts-ignore
-globalThis.WebSocket = WebSocket;
+/**
+ * Initializes the required SDK-level polyfills for iterator and WebSocket compatibility.
+ */
+initializePolyfills();
 
+/**
+ * Fetches the current ledger parameters from the Midnight indexer.
+ * Required for initializing the Dust wallet and calculating transaction costs.
+ */
 async function fetchLedgerParameters(indexerUrl: string): Promise<LedgerParameters> {
   const response = await fetch(indexerUrl, {
     method: "POST",
@@ -109,7 +95,7 @@ async function main() {
       dust: (config) => DustWallet(config).startWithSecretKey(dustSecretKey, ledgerParams.dust),
     });
 
-    console.log(chalk.cyan("🔄 Synchronizing with network..."));
+    console.log(chalk.cyan("🔄 Initializing system..."));
     await wallet.start(shieldedSecretKeys, dustSecretKey);
 
     const nightTokenRaw = unshieldedToken().raw;
@@ -117,20 +103,26 @@ async function main() {
     const state = await Rx.firstValueFrom(
       wallet.state().pipe(
         Rx.tap((s: any) => {
-          process.stdout.write(`\r🔄 Synchronizing wallet... [${s.isSynced ? 'DONE' : 'Loading'}]   `);
+          process.stdout.write(
+            `\r🔄 Synchronizing wallet... [Loading.....] (This may take a few minutes)   `,
+          );
         }),
         Rx.filter((s: any) => s.isSynced),
         Rx.take(1)
       )
+    );
+    
+    process.stdout.write(
+      `\r🔄 Synchronizing wallet... [DONE]                                  \n`,
     );
 
     const balance = (state as any).unshielded.balances[nightTokenRaw] ?? 0n;
     const dustBalance = (state as any).dust.balance(new Date());
     const address = keystore.getBech32Address().toString();
 
-    console.log(chalk.green("\n\n✅ Wallet synchronization complete!"));
+    console.log(chalk.green("\n✅ Wallet synchronization complete!"));
     console.log(`📍 Address: ${chalk.cyan(address)}`);
-    console.log(`💰 tNight:  ${chalk.green(balance.toLocaleString())}`);
+    console.log(`💰 tNight:  ${chalk.green(formatMidnight(balance))}`);
     console.log(`✨ DUST:    ${chalk.green(dustBalance.toLocaleString())}`);
     
     if (dustBalance === 0n) {

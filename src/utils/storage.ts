@@ -15,6 +15,10 @@ const parse = (str: string) =>
     return v;
   });
 
+/**
+ * Persistent storage implementation for Midnight transaction history using LevelDB.
+ * Handles serialization of BigInt and complex transaction objects.
+ */
 export class LevelDBHistoryStorage implements TransactionHistoryStorage {
   private db: Level<string, string>;
 
@@ -22,6 +26,9 @@ export class LevelDBHistoryStorage implements TransactionHistoryStorage {
     this.db = new Level(dbPath);
   }
 
+  /**
+   * Persists a transaction history entry to the underlying LevelDB database.
+   */
   async create(entry: TransactionHistoryEntry): Promise<void> {
     await this.db.put(`tx:${entry.hash}`, stringify(entry));
   }
@@ -60,6 +67,9 @@ export class LevelDBHistoryStorage implements TransactionHistoryStorage {
   }
 }
 
+/**
+ * Initializes and returns a persistent storage instance for the specified wallet prefix.
+ */
 export function getPersistentStorage(prefix: string = "default") {
   const dbPath = path.join(process.cwd(), ".midnight-data", prefix, "history");
   return new LevelDBHistoryStorage(dbPath);

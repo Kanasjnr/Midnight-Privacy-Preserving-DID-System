@@ -19,9 +19,9 @@ import {
   ZswapSecretKeys,
   DustSecretKey,
   LedgerParameters,
+  unshieldedToken,
 } from "@midnight-ntwrk/ledger-v8";
 import { setNetworkId, getNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
-import { WebSocket } from "ws";
 import chalk from "chalk";
 import Enquirer from "enquirer";
 import { Buffer } from "buffer";
@@ -29,38 +29,22 @@ import { EnvironmentManager } from "./utils/environment.js";
 import { DIDManager } from "./dids/did-manager.js";
 import { ProofGenerator } from "./proofs/proof-generator.js";
 import fs from "fs";
+import { initializePolyfills } from "./utils/polyfills.js";
 
-// --- COMPREHENSIVE ITERATOR POLYFILLS ---
-const polyfillIterator = (proto: any) => {
-  if (!proto) return;
-  const methods = ['map', 'filter', 'every', 'some', 'find', 'reduce', 'forEach', 'toArray'];
-  for (const method of methods) {
-    if (!proto[method]) {
-      proto[method] = function (this: any, ...args: any[]) {
-        const arr = Array.from(this);
-        if (method === 'toArray') return arr;
-        return (arr[method as any] as any)(...args);
-      };
-    }
-  }
-};
-
-polyfillIterator(Object.getPrototypeOf(new Map().values()));
-polyfillIterator(Object.getPrototypeOf(new Map().entries()));
-polyfillIterator(Object.getPrototypeOf(new Map().keys()));
-polyfillIterator(Object.getPrototypeOf(new Set().values()));
-polyfillIterator(Object.getPrototypeOf([].values()));
-
-if (!(Array.prototype as any).toArray) {
-  Object.defineProperty(Array.prototype, 'toArray', {
-    value: function () { return this; },
-    enumerable: false,
-    configurable: true
+/**
+ * Formats a raw Midnight unit (Lovelace-equivalent) into a human-readable tNight string.
+ * Uses the ecosystem-standard 6 decimal places.
+ */
+function formatMidnight(amount: bigint): string {
+  const units = Number(amount) / 1_000_000;
+  return units.toLocaleString(undefined, {
+    minimumFractionDigits: 6,
+    maximumFractionDigits: 6,
   });
 }
 
-// @ts-ignore
-globalThis.WebSocket = WebSocket;
+// Initialize statutory SDK polyfills
+initializePolyfills();
 
 async function fetchLedgerParameters(): Promise<LedgerParameters> {
   const networkConfig = EnvironmentManager.getNetworkConfig();
@@ -112,22 +96,22 @@ async function main() {
       ),
     );
 
-    EnvironmentManager.validateEnvironment();
     const networkConfig = EnvironmentManager.getNetworkConfig();
     const networkId = networkConfig.name === "Preprod" ? "preprod" : "preview";
     setNetworkId(networkId);
 
     const walletSeed = process.env.WALLET_SEED!;
-    console.log(chalk.cyan("🏗️  Initializing Wallet..."));
 
-    // HDWallet derivation alignment for JS 4.x
+    // Select account and derive keys for the required actor roles.
     const hdWallet = HDWallet.fromSeed(Buffer.from(walletSeed, "hex"));
-    if (hdWallet.type !== "seedOk") throw new Error("Invalid seed");
+    if (hdWallet.type !== "seedOk") throw new Error("Invalid wallet seed");
+    
     const keys = hdWallet.hdWallet
       .selectAccount(0)
       .selectRoles([Roles.Zswap, Roles.NightExternal, Roles.Dust])
       .deriveKeysAt(0);
-    if (keys.type !== "keysDerived") throw new Error("Key derivation failed");
+    
+    if (keys.type !== "keysDerived") throw new Error("Role-based key derivation failed");
 
     const unshieldedKeystore = createKeystore(
       keys.keys[Roles.NightExternal],
@@ -165,15 +149,24 @@ async function main() {
         DustWallet(config).startWithSecretKey(dustSecretKey, ledgerParams.dust),
     });
 
-    process.stdout.write("🔄 Synchronizing with Midnight Network... ");
+    process.stdout.write("🔄 Initializing system... ");
     await wallet.start(shieldedSecretKeys, dustSecretKey);
+    
     const state = (await Rx.firstValueFrom(
       wallet.state().pipe(
+        Rx.tap((s: any) => {
+          process.stdout.write(
+            `\r🔄 Synchronizing wallet... [Loading] (This may take a few minutes)   `,
+          );
+        }),
         Rx.filter((s: any) => s.isSynced),
-        Rx.first(),
+        Rx.take(1),
       ),
     )) as FacadeState;
-    console.log("[DONE]");
+
+    process.stdout.write(
+      `\r🔄 Synchronizing wallet... [DONE]                                  \n`,
+    );
 
     console.log("✅ Wallet Synced!");
 
@@ -185,7 +178,12 @@ async function main() {
       .toString();
 
     console.log(chalk.yellow(`   Shielded Address:   ${shieldedAddr}`));
-    console.log(chalk.yellow(`   Unshielded Address: ${unshieldedAddr}\n`));
+    console.log(chalk.yellow(`   Unshielded Address: ${unshieldedAddr}`));
+    console.log(
+      chalk.yellow(
+        `   tNight Balance:     ${formatMidnight((state as any).unshielded.balances[unshieldedToken().raw] ?? 0n)}\n`,
+      ),
+    );
 
     const didManager = new DIDManager(
       wallet,

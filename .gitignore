@@ -50,3 +50,7 @@ coverage/
 # Temporary files
 tmp/
 temp/
+
+# Midnight Local State
+midnight-level-db/
+credentials.json

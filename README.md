@@ -10,6 +10,35 @@ This system allows users to:
 - **Issue Credentials**: Authorized issuers can issue verifiable credentials (e.g., age verification) to holders.
 - **Privacy-Preserving Verification**: Holders can prove specific claims (like being over 18) using zero-knowledge witnesses without disclosing their actual date of birth or other private data.
 
+## 🏗️ Architecture & Protocol Flow
+
+This system achieves **Selective Disclosure** by separating private identity attributes (like birthdates) from verifiable public assertions. The logic moves from local witness generation to on-chain commitment verification.
+
+### Identity Verification Sequence
+
+```mermaid
+sequenceDiagram
+    participant Holder as User (Holder)
+    participant Issuer as Credential Issuer
+    participant Ledger as Midnight Ledger
+    participant Verifier as Verifier
+
+    Note over Holder: Generates DID and Secret Keys
+    Holder->>Ledger: Registers DID (Disclosed metadata only)
+
+    Note over Issuer: Validates Real-World Attribute
+    Issuer->>Holder: Requests Holder's DID Hash
+    Holder-->>Issuer: Provides DID Hash (Public Identifier)
+    Issuer->>Ledger: Anchors Credential Commitment (Shielded state)
+
+    Note over Verifier: Requests Authentication (Age > 18)
+    Verifier-->>Holder: Challenges for Age Proof
+    Note over Holder: Generates ZK-Proof Locally (Private Witness)
+    Holder->>Verifier: Submits ZK-Proof (No PII leaked)
+    Verifier->>Ledger: Asserts Proof against On-Chain Commitment
+    Note over Verifier: Verification SUCCESS (Boolean Truth)
+```
+
 ## Privacy Features
 
 This project demonstrates Midnight's core privacy capabilities:
@@ -44,6 +73,7 @@ This project demonstrates Midnight's core privacy capabilities:
    _Note: `npm run setup` will help generate a wallet seed if one is not provided._
 
 3. **Compile, Build, and Deploy**:
+
    ```bash
     - Compiles the Compact contracts (`contracts/*.compact`)
     - Builds the TypeScript source into the `dist/` directory
@@ -106,6 +136,12 @@ And check that the build succeeds:
 npm run build
 ```
 
-Built with 🌙 Midnight Network.
+## Open Source & Contributions
 
-Midnight Preprod faucet:
+This project is built for **Sovereignty**. We believe privacy-preserving identity is a public good, and this repository is officially **Open Source**.
+
+Contributions are welcome! Whether you're fixing a bug, adding a new credential schema, or proposing a protocol enhancement, we'd love to see your pull requests.
+
+Help us build the private web.
+
+Built with 🌙 Midnight Network.

@@ -21,39 +21,17 @@ import { WebSocket } from "ws";
 import * as Rx from "rxjs";
 import chalk from "chalk";
 import { EnvironmentManager } from "./utils/environment.js";
+import { initializePolyfills } from "./utils/polyfills.js";
 
-// --- COMPREHENSIVE ITERATOR POLYFILLS ---
-const polyfillIterator = (proto: any) => {
-  if (!proto) return;
-  const methods = ['map', 'filter', 'every', 'some', 'find', 'reduce', 'forEach', 'toArray'];
-  for (const method of methods) {
-    if (!proto[method]) {
-      proto[method] = function (this: any, ...args: any[]) {
-        const arr = Array.from(this);
-        if (method === 'toArray') return arr;
-        return (arr[method as any] as any)(...args);
-      };
-    }
-  }
-};
+/**
+ * Initializes required SDK polyfills for environment compatibility.
+ */
+initializePolyfills();
 
-polyfillIterator(Object.getPrototypeOf(new Map().values()));
-polyfillIterator(Object.getPrototypeOf(new Map().entries()));
-polyfillIterator(Object.getPrototypeOf(new Map().keys()));
-polyfillIterator(Object.getPrototypeOf(new Set().values()));
-polyfillIterator(Object.getPrototypeOf([].values()));
-
-if (!(Array.prototype as any).toArray) {
-  Object.defineProperty(Array.prototype, 'toArray', {
-    value: function () { return this; },
-    enumerable: false,
-    configurable: true
-  });
-}
-
-// @ts-ignore
-globalThis.WebSocket = WebSocket;
-
+/**
+ * Fetches current ledger parameters from the Midnight indexer.
+ * Required for DUST utility transaction fee calculations.
+ */
 async function fetchLedgerParameters(indexerUrl: string): Promise<LedgerParameters> {
   const response = await fetch(indexerUrl, {
     method: "POST",

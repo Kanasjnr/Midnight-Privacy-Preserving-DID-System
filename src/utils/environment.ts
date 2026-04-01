@@ -2,7 +2,14 @@ import fs from "fs";
 import path from "path";
 import { NetworkConfig } from "../providers/midnight-providers.js";
 
+/**
+ * Manages network configurations and environment validation for the Midnight DID System.
+ */
 export class EnvironmentManager {
+  /**
+   * Retrieves the network configuration based on the MIDNIGHT_NETWORK environment variable.
+   * Defaults to 'preview' if no environment is specified.
+   */
   static getNetworkConfig(): NetworkConfig {
     const network = process.env.MIDNIGHT_NETWORK || "preview";
 
@@ -26,6 +33,10 @@ export class EnvironmentManager {
     return networks[network as keyof typeof networks] || networks.preview;
   }
 
+  /**
+   * Validates that all required environment variables are present and correctly formatted.
+   * Throws an error if any critical configuration (e.g., WALLET_SEED) is missing.
+   */
   static validateEnvironment(): void {
     const required = ["WALLET_SEED"];
     const missing = required.filter((key) => !process.env[key]);
@@ -42,6 +53,10 @@ export class EnvironmentManager {
     }
   }
 
+  /**
+   * Verifies if a specific contract has been compiled and its artifacts are present.
+   * Checks for JSM module index and ZK keys.
+   */
   static checkContractCompiled(contractName: string): boolean {
     const contractPath = path.join(
       process.cwd(),

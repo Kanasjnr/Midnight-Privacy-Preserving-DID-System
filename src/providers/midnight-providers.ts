@@ -60,7 +60,6 @@ export class MidnightProviders {
     const contractPath = path.join(process.cwd(), "contracts");
     const zkConfigPath = path.join(contractPath, "managed", config.contractName);
 
-    // Wait until the wallet is fully synced (following guide 10.6)
     const state = await firstValueFrom(
       config.walletProvider.state().pipe(filter((s: any) => s.isSynced))
     ) as any;
