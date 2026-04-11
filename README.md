@@ -85,14 +85,6 @@ This project demonstrates Midnight's core privacy capabilities:
     - Deploys the contracts to the Midnight network
    ```
 
-### ⚠️ Mandatory Compiler Patch
-
-To align the native Compact compiler (v0.5.x) with the 0.15.0 runtime, you MUST run this patch after every compilation:
-
-```bash
-find contracts/managed -name "index.js" -exec sed -i '' "s/checkRuntimeVersion('0.14.0')/checkRuntimeVersion('0.15.0')/g" {} +
-```
-
 ### Manual Compilation and Building
 
 If you wish to run steps individually:
